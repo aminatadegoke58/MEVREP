@@ -1,18 +1,15 @@
 # MEV Exposure Reporter
 
-> Pharos Agent Center **Skill** — quantify how much a wallet has lost to
-> **sandwich attacks**, **frontruns**, and **backruns** on any EVM chain.
+> Quantify how much a wallet has lost to **sandwich attacks**,
+> **frontruns**, and **backruns** on any EVM chain.
 
 [![python](https://img.shields.io/badge/python-3.9%2B-blue)]()
 [![license](https://img.shields.io/badge/license-MIT--0-green)]()
-[![campaign](https://img.shields.io/badge/Pharos-Skill%20Builder-purple)]()
-
-Built for the [Pharos Agent Center Skill Builder Campaign](https://silken-muskox-24e.notion.site/pharos-agent-center-skill-builder-campaign)
-(deadline 2026-06-08).
+[![rpc](https://img.shields.io/badge/RPC-JSON--RPC%20%7C%20EVM-orange)]()
 
 ## What it does
 
-Given a wallet address and an EVM JSON-RPC URL, this skill:
+Given a wallet address and an EVM JSON-RPC URL, this tool:
 
 1. Walks the wallet's recent transactions.
 2. Identifies every swap (Uniswap V2 / V3, Sushi, PancakeSwap, and any
@@ -25,8 +22,22 @@ Given a wallet address and an EVM JSON-RPC URL, this skill:
    - Top attacker EOAs.
    - Per-incident detail (block, tx hash, attacker, confidence).
 
-It works on any EVM chain — Ethereum, Pharos atlantic-testnet / mainnet,
-Base, Arbitrum, etc. — provided you have a JSON-RPC endpoint.
+It works on any EVM chain — Ethereum, Pharos mainnet (with atlantic-testnet
+supported as well), Base, Arbitrum, etc. — provided you have a JSON-RPC
+endpoint.
+
+## Specifications
+
+| Item              | Value                                        |
+|-------------------|----------------------------------------------|
+| **Network**       | Pharos mainnet (primary); atlantic-testnet and any EVM chain also supported |
+| **Framework**     | Plain Python 3.9+; no web3 framework dependency |
+| **RPC protocol**  | JSON-RPC (`eth_*` methods)                   |
+| **License**       | MIT-0 (free to use, modify, redistribute)    |
+| **Dependencies**  | `requests` (see `requirements.txt`)          |
+| **External tools**| Optional: `cast` / `forge` (Foundry) for native balance + tx decoding fallback |
+| **Inputs**        | Wallet address, RPC URL, optional block range |
+| **Outputs**       | Text, JSON, Markdown, or HTML report         |
 
 ## Quick start
 
@@ -36,10 +47,26 @@ git clone https://github.com/aminatadegoke58/MEVREP.git
 cd MEVREP
 pip install -r requirements.txt
 
-# Scan a wallet on Pharos testnet
+# Scan a wallet on Pharos mainnet
+python src/detect_mev.py \
+  --wallet 0xYourWallet \
+  --rpc-url https://mainnet.pharosnetwork.xyz \
+  --block-count 2000
+```
+
+To target a different chain, just swap the `--rpc-url`:
+
+```bash
+# Pharos atlantic-testnet
 python src/detect_mev.py \
   --wallet 0xYourWallet \
   --rpc-url https://atlantic-rpc.pharosnetwork.xyz \
+  --block-count 2000
+
+# Ethereum mainnet
+python src/detect_mev.py \
+  --wallet 0xYourWallet \
+  --rpc-url https://eth.llamarpc.com \
   --block-count 2000
 ```
 
@@ -48,27 +75,26 @@ For JSON output (pipe into the report formatter):
 ```bash
 python src/detect_mev.py \
   --wallet 0xYourWallet \
-  --rpc-url https://atlantic-rpc.pharosnetwork.xyz \
+  --rpc-url https://mainnet.pharosnetwork.xyz \
   --format json \
   | python src/report.py --format markdown --out mev-report.md
 ```
 
-## Use as a Pharos Agent skill
+## Use with an AI agent
 
-The skill spec at `SKILL.md` is the entry point the AI Agent reads. The
-Agent will:
+The skill spec at `SKILL.md` is the entry point the agent reads. The
+agent will:
 
 1. Read `SKILL.md` and `references/detection-rules.md` to learn the
    available capabilities.
-2. Resolve the RPC URL from `pharos-skill-engine/assets/networks.json`
-   (when targeting Pharos) or accept a user-supplied URL.
+2. Use the RPC URL the user provides (or fall back to a known EVM RPC).
 3. Invoke `src/detect_mev.py` with the user's wallet.
 4. Format the output with `src/report.py` and present it in the chat.
 
 A typical agent prompt that triggers this skill:
 
-> "How much have I lost to MEV on Pharos testnet over the last 2000
-> blocks? Wallet is `0xYourWallet`."
+> "How much have I lost to MEV over the last 2000 blocks? My wallet is
+> `0xYourWallet`."
 
 ## Repository layout
 
@@ -118,6 +144,5 @@ redistribute. No attribution required.
 
 ---
 
-**Skill author:** aminatadegoke58
-**Built with:** Python 3.9+, the Pharos Agent Center, and a healthy
-distrust of public memepools.
+**Author:** aminatadegoke58
+**Built with:** Python 3.9+ and a healthy distrust of public memepools.

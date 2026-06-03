@@ -7,9 +7,8 @@ description: >
   "frontrun report", "how much did I lose to MEV", "slippage analysis",
   or wants a per-token / per-protocol breakdown of value extracted from
   their wallet's swap transactions. Use the bundled `src/detect_mev.py`
-  detector to scan a wallet's transaction history via JSON-RPC (works
-  with any EVM RPC URL, including Pharos atlantic-testnet / mainnet
-  endpoints defined in `pharos-skill-engine/assets/networks.json`).
+  detector to scan a wallet's transaction history via JSON-RPC against
+  any EVM-compatible RPC endpoint.
   Do not attempt MEV exposure analysis without reading this skill.
 version: 0.1.0
 requires:
@@ -17,13 +16,13 @@ requires:
   - requests
   - anyBins:
       - cast   # optional, used for native balance / tx decoding fallback
-      - jq
+      - jq     # optional, used for ergonomic RPC URL resolution
 ---
 
 # MEV Exposure Reporter
 
 Quantify how much a wallet lost to **sandwich attacks** and **frontrunning**
-on any EVM-compatible chain (Ethereum, Pharos, Base, Arbitrum, etc.).
+on any EVM-compatible chain.
 
 The skill ships a Python detection engine that:
 
@@ -50,16 +49,16 @@ The skill ships a Python detection engine that:
 
 ## When NOT to use
 
-- Single-tx debugging (use `pharos-skill-engine` query.md instead).
+- Single-tx debugging (use a general-purpose chain query tool).
 - Approval/permission auditing (use a dedicated approval tool).
-- General portfolio aggregation (use `pharos-skill-engine`).
+- General portfolio aggregation (use a wallet asset aggregator).
 
 ## Inputs
 
 | Input          | Required | Description                                   |
 |----------------|----------|-----------------------------------------------|
 | `wallet`       | yes      | 0x address to analyze                         |
-| `rpc_url`      | yes      | JSON-RPC endpoint (Pharos atlantic-testnet, mainnet, or any EVM) |
+| `rpc_url`      | yes      | JSON-RPC endpoint (any EVM-compatible chain)  |
 | `block_count`  | no       | How many recent blocks to scan (default 5000) |
 | `min_loss_usd` | no       | Ignore dust extraction below this USD (default 0.50) |
 | `format`       | no       | `text` (default) or `json`                    |
@@ -81,17 +80,16 @@ A structured report with:
 # 1. Install
 pip install -r requirements.txt
 
-# 2. Run a scan on Pharos atlantic testnet
+# 2. Run a scan
 python src/detect_mev.py \
   --wallet 0xYourWalletHere \
-  --rpc-url "$(jq -r '.networks[] | select(.name=="atlantic-testnet") | .rpcUrl' \
-        /path/to/pharos-skill-engine/assets/networks.json)" \
+  --rpc-url https://mainnet.pharosnetwork.xyz \
   --block-count 2000
 
 # 3. Get a JSON report
 python src/detect_mev.py \
   --wallet 0xYourWalletHere \
-  --rpc-url https://atlantic-rpc.pharosnetwork.xyz \
+  --rpc-url https://mainnet.pharosnetwork.xyz \
   --format json > report.json
 ```
 
@@ -99,8 +97,8 @@ python src/detect_mev.py \
 
 When the user asks for an MEV report, the Agent should:
 
-1. Resolve the RPC URL from `pharos-skill-engine/assets/networks.json`
-   (unless the user supplies one).
+1. Resolve the RPC URL — accept the user's URL, or use a known EVM RPC
+   for the chain the user mentions.
 2. Ask the user for the wallet address (never invent one).
 3. Run `src/detect_mev.py` with the parameters above.
 4. Pipe the output through `src/report.py` to produce a human-readable
@@ -112,7 +110,7 @@ When the user asks for an MEV report, the Agent should:
 
 | Error                              | Cause                          | Action |
 |------------------------------------|--------------------------------|--------|
-| `rpc unreachable`                  | Bad / dead RPC URL             | Ask user for a working RPC or use Pharos fallback |
+| `rpc unreachable`                  | Bad / dead RPC URL             | Ask user for a working RPC |
 | `wallet has no txs in range`       | Wallet inactive or new         | Increase `--block-count` or confirm address |
 | `unknown router selector`          | DEX not yet supported          | Add selector to `references/detection-rules.md` |
 | `insufficient price reference`     | Token has no USDC pair         | Note the unknown token, skip USD estimate |

@@ -3,7 +3,7 @@ rpc.py - Lightweight JSON-RPC helpers for MEV detection.
 
 No external web3 dependency; we use plain HTTP + eth_getBlockByNumber,
 eth_getTransactionByHash, eth_getTransactionReceipt, and eth_call for
-historical state. Works with any EVM-compatible RPC (Pharos, Ethereum,
+historical state. Works with any EVM-compatible RPC endpoint.
 Base, Arbitrum, etc.).
 """
 from __future__ import annotations
