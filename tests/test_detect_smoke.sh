@@ -201,6 +201,52 @@ else
   fail "--chain mainnet does not resolve to chainId 1672"
 fi
 
+# Test 15: --format json output is parseable (no banner pollution on stdout)
+echo "Test 15: --format json stdout is clean JSON"
+stdout_only="$(bash "$DETECT" --demo --format json 2>/dev/null)"
+if command -v jq >/dev/null 2>&1; then
+  if echo "$stdout_only" | jq . >/dev/null 2>&1; then
+    ok "--format json stdout parses with jq"
+  else
+    fail "--format json stdout does NOT parse with jq (banner leaking?)"
+  fi
+else
+  if echo "$stdout_only" | grep -qE '^\{'; then
+    ok "--format json stdout starts with { (jq not available to verify deeper)"
+  else
+    fail "--format json stdout does not start with {"
+  fi
+fi
+
+# Test 16: --format markdown stdout is clean markdown (no banner)
+echo "Test 16: --format markdown stdout is clean markdown"
+stdout_only="$(bash "$DETECT" --demo --format markdown 2>/dev/null)"
+if echo "$stdout_only" | head -1 | grep -q "^# MEV Exposure Report"; then
+  ok "--format markdown stdout starts with H1"
+else
+  fail "--format markdown stdout does not start with H1 (banner leaking?)"
+fi
+
+# Test 17: cast-missing branch (only when cast is NOT installed)
+echo "Test 17: cast-missing branch (when cast not on PATH) — already covered by Test 11"
+
+# Test 18: progress lines go to stderr (not stdout)
+echo "Test 18: progress goes to stderr"
+stdout_only="$(bash "$DETECT" --demo 2>/dev/null)"
+stderr_only="$(bash "$DETECT" --demo 2>&1 >/dev/null)"
+# In demo mode, the report IS on stdout
+if echo "$stdout_only" | grep -q "VERDICT:"; then
+  ok "demo stdout contains VERDICT"
+else
+  fail "demo stdout missing VERDICT"
+fi
+# Stderr should also contain the banner (we send everything to log)
+if echo "$stderr_only" | grep -q "MEV EXPOSURE REPORT"; then
+  ok "demo stderr contains banner"
+else
+  fail "demo stderr missing banner"
+fi
+
 # ---- Summary ----
 echo ""
 echo "================================================================"

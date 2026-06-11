@@ -4,12 +4,15 @@
 #
 # Heuristic MEV-exposure scanner for any EVM chain reachable via JSON-RPC.
 # Reads:
-#   - A wallet's outgoing ERC20 Transfer events (proxy for swap activity)
-#   - Per-block transaction lists and counts to flag high-extraction blocks
+#   - A wallet's ERC20 Transfer events (proxy for swap activity)
 # Produces:
 #   - MEV exposure score 0-100
 #   - Verdict: NONE / LOW / MEDIUM / HIGH / CRITICAL
 #   - text, json, or markdown report
+#
+# All human-readable output (banner, progress, status) goes to STDERR so
+# --format json / --format markdown output on STDOUT stays parseable by
+# jq / pipeline tools.
 #
 # Usage:
 #   bash scripts/detect.sh --demo
@@ -40,15 +43,17 @@ EOF
   exit 1
 fi
 
+# ---- Tiny logger (stderr only) ----
+log() { printf '%s\n' "$*" >&2; }
+
 # ---- Locate repo root (parent of scripts/) ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NET_JSON="$REPO_ROOT/assets/networks.json"
-[ -f "$NET_JSON" ] || { echo "Error: $NET_JSON not found" >&2; exit 1; }
+[ -f "$NET_JSON" ] || { log "Error: $NET_JSON not found"; exit 1; }
 
-# ---- Read network config (jq if present, otherwise pure sed) ----
+# ---- Read network config (jq if present, otherwise pure awk) ----
 read_net() {
-  # read_net <name> <field>   → prints the string value (without quotes)
   local name="$1" field="$2"
   if command -v jq >/dev/null 2>&1; then
     jq -r --arg n "$name" --arg f "$field" \
@@ -69,7 +74,6 @@ CHAIN="mainnet"
 BLOCKS=5000
 FORMAT="text"
 DEMO=0
-JSON_OUTPUT=0
 
 # ---- Usage ----
 usage() {
@@ -91,6 +95,11 @@ Examples:
 Prerequisites:
   Foundry (cast):  curl -L https://foundry.paradigm.xyz | bash && foundryup
   Optional:        jq  (for prettified JSON output)
+
+Output:
+  - Human-readable status (banner, progress) goes to STDERR
+  - The structured report (text/json/markdown) goes to STDOUT
+  - This means: bash scripts/detect.sh --format json | jq . works cleanly
 USAGE
 }
 
@@ -104,31 +113,29 @@ while [[ $# -gt 0 ]]; do
     --blocks)         BLOCKS="$2"; shift 2 ;;
     --format)         FORMAT="$2"; shift 2 ;;
     --demo)           DEMO=1; shift ;;
-    *)                echo "Unknown arg: $1" >&2; usage; exit 1 ;;
+    *)                log "Unknown arg: $1"; usage >&2; exit 1 ;;
   esac
 done
 
 # ---- Validate format ----
 case "$FORMAT" in
   text|json|markdown) ;;
-  *) echo "Error: --format must be text|json|markdown (got '$FORMAT')" >&2; exit 1 ;;
+  *) log "Error: --format must be text|json|markdown (got '$FORMAT')"; exit 1 ;;
 esac
 
-# ---- Validate chain (must exist in networks.json, after alias resolution) ----
-# Aliases for the two Pharos chains — users get to type short names
+# ---- Validate chain (alias then networks.json check) ----
 case "$CHAIN" in
   mainnet) NET_NAME="mainnet" ;;
   testnet) NET_NAME="atlantic-testnet" ;;
   *)       NET_NAME="$CHAIN" ;;
 esac
-# Build a list of valid chain names from the networks config
 if command -v jq >/dev/null 2>&1; then
   VALID_CHAINS=$(jq -r '.networks[].name' "$NET_JSON" | tr '\n' '|' | sed 's/|$//')
 else
   VALID_CHAINS=$(grep -oE '"name": *"[^"]+"' "$NET_JSON" | sed -E 's/.*"name": *"([^"]+)".*/\1/' | tr '\n' '|' | sed 's/|$//')
 fi
 if ! echo "$NET_NAME" | grep -qE "^($VALID_CHAINS)$"; then
-  echo "Error: --chain must be one of: $VALID_CHAINS (got '$CHAIN')" >&2
+  log "Error: --chain must be one of: $VALID_CHAINS (got '$CHAIN')"
   exit 1
 fi
 [ -z "$RPC_URL" ]     && RPC_URL="$(read_net "$NET_NAME" rpcUrl)"
@@ -143,31 +150,33 @@ fi
 
 # ---- Validate wallet ----
 if [ -z "$WALLET" ]; then
-  echo "Error: --wallet required (or use --demo)" >&2; usage; exit 1
+  log "Error: --wallet required (or use --demo)"
+  usage >&2
+  exit 1
 fi
 if ! [[ "$WALLET" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
-  echo "Error: --wallet must be a 0x-prefixed 40-hex address" >&2
+  log "Error: --wallet must be a 0x-prefixed 40-hex address"
   exit 1
 fi
 
 # ---- Validate blocks ----
 if ! [[ "$BLOCKS" =~ ^[0-9]+$ ]] || [ "$BLOCKS" -lt 1 ]; then
-  echo "Error: --blocks must be a positive integer" >&2; exit 1
+  log "Error: --blocks must be a positive integer"
+  exit 1
 fi
-[ "$BLOCKS" -gt 50000 ] && { echo "Error: --blocks capped at 50000 to stay polite to public RPCs" >&2; exit 1; }
+[ "$BLOCKS" -gt 50000 ] && { log "Error: --blocks capped at 50000 to stay polite to public RPCs"; exit 1; }
 
-# ---- Resolve chain (--demo can still use real chain) ----
-[ -z "$CHAIN_ID" ] && { echo "Error: chainId not found in networks.json" >&2; exit 1; }
-[ -z "$RPC_URL" ]  && { echo "Error: rpcUrl not found in networks.json" >&2; exit 1; }
+[ -z "$CHAIN_ID" ] && { log "Error: chainId not found in networks.json"; exit 1; }
+[ -z "$RPC_URL" ]  && { log "Error: rpcUrl not found in networks.json"; exit 1; }
 
-# ---- Banner ----
-echo ""
-echo "========================================================================"
-echo "  MEV EXPOSURE REPORT"
-echo "  Wallet:  $WALLET"
-echo "  Chain:   $NET_NAME (chainId $CHAIN_ID)"
-echo "========================================================================"
-echo ""
+# ---- Banner (stderr) ----
+log ""
+log "========================================================================"
+log "  MEV EXPOSURE REPORT"
+log "  Wallet:  $WALLET"
+log "  Chain:   $NET_NAME (chainId $CHAIN_ID)"
+log "========================================================================"
+log ""
 
 # =========================================================================
 # Live RPC path
@@ -177,20 +186,19 @@ if [ "$DEMO" = "0" ]; then
   NONCE_HEX="$(cast nonce --rpc-url "$RPC_URL" "$WALLET" 2>/dev/null || echo "0x0")"
   NONCE="$(cast --to-dec "$NONCE_HEX" 2>/dev/null || echo 0)"
   BALANCE_WEI="$(cast balance --rpc-url "$RPC_URL" "$WALLET" 2>/dev/null || echo "0")"
-  echo "  Wallet nonce:     $NONCE  (outgoing tx count)"
-  echo "  Wallet balance:   $BALANCE_WEI wei  (~$NATIVE_TOKEN)"
+  log "  Wallet nonce:     $NONCE  (outgoing tx count)"
+  log "  Wallet balance:   $BALANCE_WEI wei  (~$NATIVE_TOKEN)"
 
   # --- Head block ---
   HEAD_HEX="$(cast block-number --rpc-url "$RPC_URL" 2>/dev/null || echo "0x0")"
   HEAD="$(cast --to-dec "$HEAD_HEX" 2>/dev/null || echo 0)"
   START=$(( HEAD - BLOCKS ))
   [ "$START" -lt 0 ] && START=0
-  echo "  Head block:       $HEAD"
-  echo "  Scanning blocks:  [$START, $HEAD]  (last $BLOCKS)"
-  echo ""
+  log "  Head block:       $HEAD"
+  log "  Scanning blocks:  [$START, $HEAD]  (last $BLOCKS)"
+  log ""
 
   # --- Scan: count Transfer events (topic[0]=Transfer, topic[1]=wallet-padded) ---
-  # ERC20 Transfer event signature
   SWAP_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
   PADDED_WALLET="0x000000000000000000000000${WALLET#0x}"
 
@@ -198,37 +206,51 @@ if [ "$DEMO" = "0" ]; then
   LOGS_FILE="$TEMP/logs.jsonl"
   : > "$LOGS_FILE"
 
-  # 1000-block chunks (Pharos RPC accepts up to ~1000 in a single eth_getLogs call)
   current=$START
   BATCH=999
+  BATCH_NUM=0
+  BATCH_FAILS=0
+  log "  Fetching Transfer events for the wallet..."
+
   while [ "$current" -le "$HEAD" ]; do
     end=$(( current + BATCH ))
     [ "$end" -gt "$HEAD" ] && end=$HEAD
+    BATCH_NUM=$(( BATCH_NUM + 1 ))
 
-    from_hex="0x$(printf '%x' "$current")"
-    to_hex="0x$(printf '%x' "$end")"
+    # Use cast --to-hex for portability (avoid bash 32-bit printf overflow
+    # on chains with block numbers > 2^31).
+    from_hex="$(cast --to-hex "$(printf '%d' "$current")" 2>/dev/null || echo "0x$(printf '%x' "$current")")"
+    to_hex="$(cast --to-hex "$(printf '%d' "$end")" 2>/dev/null || echo "0x$(printf '%x' "$end")")"
 
-    # NOTE: eth_getLogs expects a SINGLE object {}, not an array [].
-    # The previous version of this script used an array and the Pharos
-    # RPC rejected every call with PARAM_VERIFY_ERROR.
-    resp="$(cast rpc --rpc-url "$RPC_URL" eth_getLogs \
+    # eth_getLogs expects a SINGLE object {}, not an array [].
+    # Hard timeout: 30s per batch — if the RPC stalls, kill cast and move on.
+    resp="$(timeout 30 cast rpc --rpc-url "$RPC_URL" eth_getLogs \
       "{\"fromBlock\":\"$from_hex\",\"toBlock\":\"$to_hex\",\"topics\":[\"$SWAP_TOPIC\",\"$PADDED_WALLET\"]}" \
-      2>/dev/null || echo "[]")"
+      2>/dev/null || echo "TIMEOUT_OR_ERROR")"
 
-    # Tolerate non-JSON / error responses gracefully
-    if [ "$resp" = "[]" ] || [ -z "$resp" ]; then
+    if [ "$resp" = "[]" ] || [ -z "$resp" ] || [ "$resp" = "TIMEOUT_OR_ERROR" ]; then
+      if [ "$resp" = "TIMEOUT_OR_ERROR" ]; then
+        BATCH_FAILS=$(( BATCH_FAILS + 1 ))
+        log "    [batch $BATCH_NUM] $current..$end: timeout/error (skipped)"
+      fi
       current=$(( end + 1 ))
       continue
     fi
 
-    # Pull (blockNumber, address) per log; one JSON line per match
-    # Use grep -o + sed; tolerate zero matches (don't crash on pipefail)
     printf '%s\n' "$resp" | grep -oE '"blockNumber":"0x[a-fA-F0-9]+","address":"0x[a-fA-F0-9]{40}"' \
       | sed -E 's/.*"blockNumber":"([^"]+)".*"address":"([^"]+)".*/\1 \2/' \
       >> "$LOGS_FILE" 2>/dev/null || true
 
+    new_count=$(wc -l < "$LOGS_FILE" | tr -d ' ')
+    log "    [batch $BATCH_NUM] $current..$end: $new_count events so far"
+
     current=$(( end + 1 ))
   done
+
+  if [ "$BATCH_FAILS" -gt 0 ]; then
+    log "  Warning: $BATCH_FAILS batch(es) failed/timed-out. Results may be incomplete."
+    log "  Try a smaller --blocks (e.g. --blocks 1000) and re-run."
+  fi
 
   TOTAL_LOGS=$(wc -l < "$LOGS_FILE" | tr -d ' ')
   UNIQUE_BLOCKS=$(awk '{print $1}' "$LOGS_FILE" | sort -u | wc -l | tr -d ' ')
@@ -245,15 +267,13 @@ else
   TOTAL_LOGS=12
   UNIQUE_BLOCKS=9
   UNIQUE_TOKENS=3
-  echo "  (DEMO mode — synthetic numbers, no RPC call made)"
-  echo "  Wallet nonce:     $NONCE  (outgoing tx count)"
-  echo "  Wallet balance:   $BALANCE_WEI wei  (~$NATIVE_TOKEN)"
-  echo ""
+  log "  (DEMO mode — synthetic numbers, no RPC call made)"
+  log "  Wallet nonce:     $NONCE  (outgoing tx count)"
+  log "  Wallet balance:   $BALANCE_WEI wei  (~$NATIVE_TOKEN)"
+  log ""
 fi
 
 # ---- Scoring ----
-# Heuristic: more distinct tokens touched + more unique blocks + more events
-# → higher suspicion of MEV extraction surface.
 SCORE=0
 INCIDENT_COUNT=0
 if   [ "$TOTAL_LOGS" -ge 200 ]; then SCORE=85; VERDICT="CRITICAL"
@@ -265,7 +285,7 @@ fi
 INCIDENT_COUNT=$(( TOTAL_LOGS / 3 ))
 [ "$INCIDENT_COUNT" -gt 100 ] && INCIDENT_COUNT=100
 
-# ---- Format output ----
+# ---- Format output (stdout only) ----
 EXPLORER_LINK="$EXPLORER_URL/address/$WALLET"
 GEN_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -384,5 +404,4 @@ TEXT
     ;;
 esac
 
-echo ""
 exit 0
