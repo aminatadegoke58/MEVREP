@@ -111,28 +111,6 @@ chmod +x scripts/*.sh
 ```
 
 That's it. No build step, no native compilation. The skill is a Python 3.9+ module wrapped by a bash CLI for easy invocation.
-### 1. Install Foundry (the engine the skill is built on)
-
-```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-```
-
-Verify with `cast --version`. This gives you `cast`, `forge`, `anvil`, and `chisel` on your `$PATH`.
-
-### 2. Install jq (used to parse JSON)
-
-```bash
-# macOS
-brew install jq
-# Debian/Ubuntu/Termux
-apt install -y jq
-# Alpine
-apk add jq
-```
-
-Verify with `jq --version`.
-
 ## Usage
 
 ### Scan a Pharos mainnet wallet
