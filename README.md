@@ -234,6 +234,28 @@ selectors, the score formula, and how to add a new DEX.
 PRs welcome — especially new DEX router selectors and MEV-bot
 allowlist entries.
 
+
+## Tests
+
+```bash
+pytest tests/ -v  # or: python3 src/scan.py --wallet 0xdemo --format md
+```
+
+The test suite covers the engine's heuristics, the JSON output schema, and (when run with `cast` installed) a live RPC smoke test against Pharos Pacific Mainnet.
+
+## Repository layout
+
+```
+.
+├── README.md                  # this file
+├── SKILL.md                   # Agent-side description (loaded by Claude/Codex/etc.)
+├── scripts/
+│   └── scan.sh          # bash + cast engine — the entire skill
+├── assets/
+│   └── networks.json          # Pharos Skill Engine network config
+└── tests/
+    └── test_*.sh              # bash smoke test
+```
 ## License
 
 [MIT-0](https://opensource.org/licenses/MIT-0) — free to use, modify,
