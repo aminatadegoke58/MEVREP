@@ -5,16 +5,46 @@ No external web3 dependency; we use plain HTTP + eth_getBlockByNumber,
 eth_getTransactionByHash, eth_getTransactionReceipt, and eth_call for
 historical state. Works with any EVM-compatible RPC endpoint.
 Base, Arbitrum, etc.).
+
+Uses only the Python standard library (`urllib.request`) — no
+`requests`, no `pip install` step needed.
 """
 from __future__ import annotations
 import json
 import time
-import requests
+import urllib.request
+import urllib.error
 from typing import Any, Dict, List, Optional
 
 
 class RpcError(Exception):
     pass
+
+
+def _http_post_json(url: str, payload: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
+    """POST a JSON payload to `url` and return the parsed JSON response.
+
+    Uses only `urllib.request` from the Python standard library.
+    Raises RpcError on any HTTP error or JSON parse failure.
+    """
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        raise RpcError(f"HTTP {e.code}: {e.reason}") from e
+    except urllib.error.URLError as e:
+        raise RpcError(f"URL error: {e.reason}") from e
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as e:
+        raise RpcError(f"non-JSON response: {body[:200]}") from e
 
 
 class RpcClient:
@@ -37,16 +67,12 @@ class RpcClient:
         last_err: Optional[Exception] = None
         for attempt in range(self.max_retries):
             try:
-                r = requests.post(self.url, json=payload, timeout=self.timeout)
-                if r.status_code == 429 or r.status_code >= 500:
-                    raise RpcError(f"HTTP {r.status_code}: {r.text[:200]}")
-                data = r.json()
+                data = _http_post_json(self.url, payload, self.timeout)
                 if "error" in data:
                     raise RpcError(data["error"].get("message", "rpc error"))
                 return data.get("result")
-            except (requests.RequestException, RpcError) as e:
+            except RpcError as e:
                 last_err = e
-                # exponential backoff
                 time.sleep(0.4 * (2 ** attempt))
         raise RpcError(f"RPC {method} failed after {self.max_retries} attempts: {last_err}")
 
