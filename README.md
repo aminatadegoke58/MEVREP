@@ -79,24 +79,39 @@ External (only if you want the optional CLIs):
 
 Everything is pinned in `requirements.txt` at the repo root.
 
-## Installation
+## Install
+
+### 1. Install Foundry (the engine the skill is built on)
 
 ```bash
-# Clone
-git clone https://github.com/arikky1122/MEVREP.git
-cd MEVREP
-
-# Install Python dependency
-pip install -r requirements.txt
-
-# (Optional) install Foundry if you want cast/forge fallback
 curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
-No build step. No native compilation. The whole engine is three
-~500-line Python files.
+Verify with `cast --version`. This gives you `cast`, `forge`, `anvil`, and `chisel` on your `$PATH`.
 
+### 2. Install jq (used to parse JSON)
+
+```bash
+# macOS
+brew install jq
+# Debian/Ubuntu/Termux
+apt install -y jq
+# Alpine
+apk add jq
+```
+
+Verify with `jq --version`.
+
+### 3. Get the skill
+
+```bash
+git clone https://github.com/arikky1122/MEVREP
+cd MEVREP
+chmod +x scripts/*.sh
+```
+
+That's it. No `pip install`, no `npm install`, no `forge build`, no compile. The skill is one or more bash scripts that use `cast` (from Foundry) for every RPC read. The `assets/networks.json` file already knows the Pharos Pacific Mainnet and Atlantic Testnet endpoints.
 ## Usage
 
 ### Scan a Pharos mainnet wallet
